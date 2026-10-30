@@ -5,32 +5,57 @@ import { useState } from "react";
 export default function EntryGate({
   onReady,
 }: {
-  onReady: (lat: number, lng: number) => void;
+  onReady: (lat: number, lng: number) => Promise<void>;
 }) {
   const [status, setStatus] = useState<"idle" | "locating" | "error">("idle");
   const [error, setError] = useState<string>("");
 
+  function fail(message: string) {
+    setStatus("error");
+    setError(message);
+  }
+
+  async function located(pos: GeolocationPosition) {
+    try {
+      await onReady(pos.coords.latitude, pos.coords.longitude);
+    } catch {
+      fail("Couldn't reach Pulse. Check your connection and try again.");
+    }
+  }
+
+  function locate(highAccuracy: boolean) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => void located(pos),
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          fail("Location permission is required to place you on the map.");
+        } else if (highAccuracy) {
+          // No GPS/Wi-Fi fix in time (typical on desktops) — a coarse fix is
+          // plenty, since the dot is offset by 1–3 km anyway.
+          locate(false);
+        } else {
+          fail("Couldn't get your location. Please try again.");
+        }
+      },
+      highAccuracy
+        ? { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
+        : { enableHighAccuracy: false, timeout: 15_000, maximumAge: 300_000 },
+    );
+  }
+
   function enter() {
+    if (!window.isSecureContext) {
+      fail(
+        "Pulse needs a secure connection for location and camera. Open it via https:// or http://localhost.",
+      );
+      return;
+    }
     if (!("geolocation" in navigator)) {
-      setStatus("error");
-      setError("Your browser doesn't support location access.");
+      fail("Your browser doesn't support location access.");
       return;
     }
     setStatus("locating");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => onReady(pos.coords.latitude, pos.coords.longitude),
-      (err) => {
-        setStatus("error");
-        setError(
-          err.code === err.PERMISSION_DENIED
-            ? "Location permission is required to place you on the map."
-            : "Couldn't get your location. Please try again.",
-        );
-      },
-      // High accuracy + maximumAge:0 forces a fresh fix (Wi-Fi/GPS scan)
-      // instead of reusing the browser's cached IP-based location.
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
-    );
+    locate(true);
   }
 
   return (

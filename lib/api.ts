@@ -6,11 +6,12 @@ export async function join(
   lat: number,
   lng: number,
 ): Promise<void> {
-  await fetch("/api/join", {
+  const res = await fetch("/api/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, lat, lng }),
   });
+  if (!res.ok) throw new Error(`join failed: ${res.status}`);
 }
 
 export async function poll(id: string): Promise<PollResponse> {
@@ -27,11 +28,12 @@ export async function sendSignal(
   type: SignalType,
   payload?: string,
 ): Promise<void> {
-  await fetch("/api/signal", {
+  const res = await fetch("/api/signal", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fromId, toId, type, payload }),
   });
+  if (!res.ok) throw new Error(`signal failed: ${res.status}`);
 }
 
 // Fire-and-forget leave that survives the tab closing.
