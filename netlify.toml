@@ -1,8 +1,0 @@
-[build]
-  # Turbopack aliases @prisma/client via a .next/node_modules symlink that
-  # Netlify's function bundle drops; webpack resolves it normally.
-  command = "npx prisma generate && next build --webpack"
-  publish = ".next"
-
-[build.environment]
-  NODE_VERSION = "22"
