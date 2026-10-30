@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
   const staleCutoff = new Date(now - STALE_MS);
   const signalCutoff = new Date(now - SIGNAL_TTL_MS);
 
-  // 1) Heartbeat — refresh lastSeen for the caller.
-  await prisma.presence.updateMany({
-    where: {},
+  // 1) Heartbeat — refresh lastSeen for the caller only.
+  const beat = await prisma.presence.updateMany({
+    where: { id },
     data: { lastSeen: new Date(now) },
   });
 
@@ -54,6 +54,10 @@ export async function GET(request: NextRequest) {
   }
 
   const response: PollResponse = {
+    // The caller's row was reaped (e.g. a throttled background tab missed
+    // heartbeats). Tell the client so it can re-join instead of silently
+    // polling as an invisible ghost.
+    gone: beat.count === 0,
     peers: peers.map((p) => ({
       id: p.id,
       lat: p.lat,
