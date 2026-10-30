@@ -396,7 +396,9 @@ export default function Home() {
 
       {conn.kind === "incoming" && (
         <ConnectionPrompt
-          title="A stranger wants to connect"
+          peerId={conn.peerId}
+          title="A wandering soul reaches out"
+          subtitle="A light through the mist wishes to speak with you."
           acceptLabel="Accept"
           declineLabel="Decline"
           onAccept={acceptIncoming}
@@ -406,6 +408,7 @@ export default function Home() {
 
       {inChat && (
         <ChatPanel
+          peerId={conn.peerId}
           messages={messages}
           connected={conn.kind === "connected"}
           videoBusy={video !== "none"}
@@ -426,8 +429,9 @@ export default function Home() {
 
       {video === "incoming" && (
         <ConnectionPrompt
-          title="Start video call?"
-          subtitle="The stranger wants to turn on video."
+          peerId={inChat ? conn.peerId : undefined}
+          title="Start a video call?"
+          subtitle="They wish to see you through the scrying glass."
           acceptLabel="Accept"
           declineLabel="Decline"
           onAccept={acceptVideo}
