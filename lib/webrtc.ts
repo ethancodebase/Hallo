@@ -15,6 +15,9 @@ interface PeerCallbacks {
   onChannelClose: () => void;
 }
 
+const MAX_CHAT_CHARS = 2000;
+const MAX_FRAME = 16 * 1024;
+
 const ICE_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
@@ -83,10 +86,12 @@ export class PeerSession {
       if (!this.closed) this.cb.onChannelClose();
     };
     dc.onmessage = (e) => {
+      // The remote peer is an untrusted stranger: drop oversized frames.
+      if (typeof e.data !== "string" || e.data.length > MAX_FRAME) return;
       try {
-        const msg = JSON.parse(e.data as string);
+        const msg = JSON.parse(e.data);
         if (msg.t === "chat" && typeof msg.text === "string") {
-          this.cb.onChat(msg.text);
+          this.cb.onChat(msg.text.slice(0, MAX_CHAT_CHARS));
         } else if (msg.t === "ctrl" && typeof msg.ctrl === "string") {
           this.cb.onControl(msg.ctrl as PeerControl);
         }

@@ -120,6 +120,7 @@ export default function ChatPanel({
       >
         <input
           value={draft}
+          maxLength={2000}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={connected ? "Whisper a message…" : "Weaving the connection…"}
           disabled={!connected}
