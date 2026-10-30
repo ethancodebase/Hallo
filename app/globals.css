@@ -10,6 +10,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-fantasy: var(--font-cinzel);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,30 +26,160 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Live user dots on the map */
+/*
+ * Live user dots: "wisps" veiled in mist. Positions are fuzzed 1–3 km, so the
+ * dot drifts inside a hazy halo instead of looking pinned to an exact spot.
+ * Mapbox owns `transform` on the marker element itself, so all motion lives
+ * on children / pseudo-elements.
+ */
 .pulse-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  cursor: pointer;
+  --wisp: #8be9ff;
+  position: relative;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  box-shadow: 0 0 0 rgba(255, 255, 255, 0.5);
-  animation: pulse-ring 2s ease-out infinite;
-  transition: transform 0.1s ease;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.4s ease;
 }
 
-.pulse-dot:hover {
-  transform: scale(1.3);
+/* The mist veil — the "somewhere around here" zone. */
+.pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--wisp) 45%, transparent) 0%,
+    color-mix(in srgb, var(--wisp) 18%, transparent) 45%,
+    transparent 72%
+  );
+  filter: blur(3px);
+  animation: veil-breathe 4.5s ease-in-out infinite;
+  pointer-events: none;
 }
 
-/* The user's own "you are here" pin — small, sized like the dots. */
+/* A faint rune circle marking the edge of the veil. */
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--wisp) 55%, transparent);
+  animation: rune-spin 22s linear infinite;
+  pointer-events: none;
+}
+
+.pulse-wisp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0 25%, var(--wisp) 70%);
+  box-shadow:
+    0 0 6px 1px var(--wisp),
+    0 0 16px 4px color-mix(in srgb, var(--wisp) 50%, transparent);
+  animation: wisp-drift 7s ease-in-out infinite;
+  transition: scale 0.2s ease;
+}
+
+.pulse-dot:hover .pulse-wisp {
+  scale: 1.5;
+}
+
+.pulse-dot:hover::after {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--wisp) 85%, transparent);
+}
+
+/* The user's own "you are here" sigil. Only this browser ever sees the true
+   spot; the golden veil hints at how far away others will see this light. */
 .pulse-me {
   position: relative;
-  font-size: 18px;
-  line-height: 1;
+  width: 44px;
+  height: 44px;
   cursor: default;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.pulse-me .sigil {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 4px rgba(253, 214, 140, 0.9))
+    drop-shadow(0 0 12px rgba(246, 180, 80, 0.55));
+}
+
+/* Shared sigil animation (map marker + legend + ledger). */
+.sigil-runes,
+.sigil-star {
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+.sigil-runes {
+  animation: rune-spin 26s linear infinite;
+}
+
+.sigil-star {
+  animation: star-twinkle 3.2s ease-in-out infinite;
+}
+
+.sigil-core {
+  animation: core-glow 3.2s ease-in-out infinite;
+}
+
+.ledger-sigil {
+  display: inline-block;
+}
+
+.ledger-sigil .sigil {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 3px rgba(253, 214, 140, 0.8));
+}
+
+/* Rising rings of light from the sigil. */
+.pulse-me-beacon,
+.pulse-me-beacon::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(253, 214, 140, 0.8);
+  animation: beacon-ripple 3s ease-out infinite;
+  pointer-events: none;
+}
+
+.pulse-me-beacon::after {
+  content: "";
+  inset: -1.5px;
+  animation-delay: 1.5s;
+}
+
+.pulse-me-veil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  border: 1px dashed rgba(251, 211, 141, 0.7);
+  background: radial-gradient(
+    circle,
+    rgba(251, 211, 141, 0.28) 0%,
+    rgba(251, 211, 141, 0.08) 55%,
+    transparent 72%
+  );
+  animation: rune-spin 30s linear infinite reverse, veil-breathe 5s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .pulse-me-label {
@@ -56,24 +187,348 @@ body {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 1px;
+  margin-bottom: 4px;
+  font-family: var(--font-cinzel), serif;
   font-size: 10px;
   font-weight: 700;
-  color: #ffffff;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 0 5px;
+  letter-spacing: 0.08em;
+  color: #fde8c0;
+  background: rgba(20, 12, 40, 0.75);
+  border: 1px solid rgba(251, 211, 141, 0.5);
+  padding: 1px 6px;
   border-radius: 9999px;
   white-space: nowrap;
 }
 
-@keyframes pulse-ring {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
+@keyframes veil-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+    scale: 0.92;
   }
-  70% {
-    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+  50% {
+    opacity: 1;
+    scale: 1.08;
+  }
+}
+
+@keyframes rune-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes wisp-drift {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: 5px -4px;
+  }
+  50% {
+    translate: -3px -6px;
+  }
+  75% {
+    translate: -5px 3px;
+  }
+}
+
+@keyframes star-twinkle {
+  0%,
+  100% {
+    scale: 1;
+    rotate: 0deg;
+  }
+  50% {
+    scale: 0.82;
+    rotate: 12deg;
+  }
+}
+
+@keyframes core-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes beacon-ripple {
+  0% {
+    opacity: 0.9;
+    scale: 0.6;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    opacity: 0;
+    scale: 2.4;
+  }
+}
+
+/* Whereabouts window unfurling beside the ledger. */
+.whereabouts-in {
+  animation: whereabouts-in 0.28s ease-out;
+}
+
+@keyframes whereabouts-in {
+  from {
+    opacity: 0;
+    translate: -8px 0;
+    scale: 0.97;
+  }
+}
+
+/* ---------- Entry gate ---------- */
+
+.starfield {
+  background-color: #050a1e;
+}
+
+.starfield::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 72% 12%, #fde3a7 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 38% 72%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 86% 64%, #c4a1ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 88%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 58% 34%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 28%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 6% 52%, #8be9ff 50%, transparent 51%);
+  background-size: 260px 260px;
+  animation: stars-twinkle 6s ease-in-out infinite alternate;
+}
+
+.nebula {
+  background:
+    radial-gradient(ellipse 60% 45% at 20% 25%, rgba(124, 92, 220, 0.28), transparent 70%),
+    radial-gradient(ellipse 55% 40% at 80% 75%, rgba(56, 120, 200, 0.22), transparent 70%),
+    radial-gradient(ellipse 40% 35% at 50% 45%, rgba(253, 214, 140, 0.1), transparent 70%);
+  animation: nebula-drift 18s ease-in-out infinite alternate;
+}
+
+.gate-halo {
+  background: radial-gradient(
+    circle,
+    rgba(253, 214, 140, 0.32) 0%,
+    rgba(196, 161, 255, 0.14) 45%,
+    transparent 70%
+  );
+  filter: blur(6px);
+  animation: veil-breathe 5s ease-in-out infinite;
+}
+
+.gate-sigil .sigil {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 6px rgba(253, 214, 140, 0.9))
+    drop-shadow(0 0 22px rgba(246, 180, 80, 0.5));
+}
+
+.gate-sigil.is-seeking .sigil-runes {
+  animation-duration: 2.5s;
+}
+
+.gate-sigil.is-seeking .sigil-star {
+  animation-duration: 1.2s;
+}
+
+.gate-title {
+  background: linear-gradient(180deg, #fff6dc 0%, #fde3a7 45%, #c9a0ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px rgba(253, 214, 140, 0.35));
+}
+
+.gate-button {
+  background: linear-gradient(90deg, #fde3a7, #f6c560, #fde3a7);
+  background-size: 200% 100%;
+  box-shadow:
+    0 0 24px rgba(253, 214, 140, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  animation: gate-shimmer 4s linear infinite;
+}
+
+.gate-button:hover:not(:disabled) {
+  box-shadow:
+    0 0 36px rgba(253, 214, 140, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  scale: 1.03;
+}
+
+.gate-button:disabled {
+  opacity: 0.85;
+}
+
+@keyframes stars-twinkle {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nebula-drift {
+  from {
+    translate: -2% -1%;
+    scale: 1;
+  }
+  to {
+    translate: 2% 1%;
+    scale: 1.06;
+  }
+}
+
+@keyframes gate-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------- Chat panel ---------- */
+
+.chat-in {
+  animation: chat-in 0.35s ease-out;
+}
+
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    translate: 24px 0;
+  }
+}
+
+.chat-bubble-in {
+  animation: bubble-in 0.25s ease-out;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+.chat-peer-badge {
+  border: 1px dashed color-mix(in srgb, var(--wisp) 55%, transparent);
+  background: color-mix(in srgb, var(--wisp) 10%, transparent);
+}
+
+.chat-bubble-theirs {
+  border: 1px solid color-mix(in srgb, var(--wisp) 40%, transparent);
+  background: color-mix(in srgb, var(--wisp) 12%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--wisp) 18%, transparent);
+}
+
+/* ---------- Connection / video prompt ---------- */
+
+.prompt-backdrop {
+  animation: fade-in 0.25s ease-out;
+}
+
+.prompt-in {
+  animation: prompt-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.prompt-glow {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--wisp) 35%, transparent),
+    transparent 70%
+  );
+  filter: blur(8px);
+}
+
+.prompt-ring {
+  border: 1px dashed color-mix(in srgb, var(--wisp) 70%, transparent);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--wisp) 25%, transparent),
+    transparent 70%
+  );
+  animation: rune-spin 14s linear infinite, veil-breathe 3s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes prompt-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+    translate: 0 8px;
+  }
+}
+
+/* Wisp icon in the Wanderers' Ledger. */
+.ledger-wisp {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0 25%, var(--wisp) 70%);
+  box-shadow:
+    0 0 6px 1px var(--wisp),
+    0 0 14px 6px color-mix(in srgb, var(--wisp) 30%, transparent);
+}
+
+.ledger-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(196, 161, 255, 0.35) transparent;
+}
+
+/* Flare on the marker the user just flew to from the ledger. */
+.pulse-dot.is-sought .pulse-wisp {
+  scale: 1.7;
+}
+
+.pulse-dot.is-sought::after {
+  inset: -4px;
+  border: 1.5px solid #fde3a7;
+  box-shadow: 0 0 18px 4px color-mix(in srgb, var(--wisp) 60%, transparent);
+}
+
+.pulse-dot.is-sought,
+.pulse-me.is-sought {
+  z-index: 5;
+}
+
+.pulse-me.is-sought .pulse-me-beacon,
+.pulse-me.is-sought .pulse-me-beacon::after {
+  animation-duration: 1.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot::before,
+  .pulse-dot::after,
+  .pulse-wisp,
+  .pulse-me-veil,
+  .pulse-me-beacon,
+  .pulse-me-beacon::after,
+  .sigil-runes,
+  .sigil-star,
+  .sigil-core,
+  .whereabouts-in,
+  .starfield::before,
+  .nebula,
+  .gate-halo,
+  .gate-button,
+  .chat-in,
+  .chat-bubble-in,
+  .prompt-backdrop,
+  .prompt-in,
+  .prompt-ring {
+    animation: none;
   }
 }
