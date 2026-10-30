@@ -15,7 +15,9 @@ export default defineConfig({
   migrations: {
     path: path.join("prisma", "migrations"),
   },
+  // Migrations need a direct (unpooled) connection; the app itself uses the
+  // pooled DATABASE_URL. Falls back to DATABASE_URL where no direct URL is set.
   datasource: {
-    url: env("DATABASE_URL"),
+    url: process.env.DATABASE_URL_UNPOOLED ?? env("DATABASE_URL"),
   },
 });
