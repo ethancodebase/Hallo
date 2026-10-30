@@ -9,7 +9,8 @@ import VideoPanel from "./components/VideoPanel";
 import { join, leave, poll, sendSignal } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
-import { type PeerDot, type SignalMsg } from "@/lib/types";
+import { randomId } from "@/lib/id";
+import { type PeerDot, type SignalMsg, type SignalType } from "@/lib/types";
 
 type Conn =
   | { kind: "idle" }
@@ -21,10 +22,13 @@ type Conn =
 type VideoState = "none" | "requesting" | "incoming" | "active";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+// Accepted but the data channel never opened (peer vanished mid-handshake,
+// or an unreachable NAT). Give up instead of "Connecting…" forever.
+const CONNECT_TIMEOUT_MS = 25_000;
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(() => randomId());
   const [peers, setPeers] = useState<PeerDot[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -51,6 +55,17 @@ export default function Home() {
   const peerRef = useRef<PeerSession | null>(null);
   const msgId = useRef(0);
   const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Outbound signals are sent one at a time so they land in the recipient's
+  // mailbox in the order they were produced (offer before its ICE, etc.).
+  const sendChain = useRef<Promise<void>>(Promise.resolve());
+  function signal(toId: string, type: SignalType, payload?: string) {
+    sendChain.current = sendChain.current
+      .then(() => sendSignal(sessionId, toId, type, payload))
+      .catch(() => {});
+  }
 
   function showNotice(text: string) {
     setNotice(text);
@@ -63,6 +78,7 @@ export default function Home() {
 
   function teardown(message?: string) {
     if (requestTimer.current) clearTimeout(requestTimer.current);
+    if (connectTimer.current) clearTimeout(connectTimer.current);
     peerRef.current?.close();
     peerRef.current = null;
     setLocalStream(null);
@@ -76,7 +92,7 @@ export default function Home() {
   function startPeer(peerId: string, initiator: boolean) {
     const ps = new PeerSession(initiator, {
       onSignal: (type: DescType, payload: string) => {
-        void sendSignal(sessionId, peerId, type, payload);
+        signal(peerId, type, payload);
       },
       onChat: (text) => addMessage(false, text),
       onControl: (ctrl) => handleControl(ctrl),
@@ -87,10 +103,23 @@ export default function Home() {
         }
       },
       onChannelOpen: () => {
+        if (connectTimer.current) clearTimeout(connectTimer.current);
         setConn({ kind: "connected", peerId });
+      },
+      onChannelClose: () => {
+        if (peerRef.current !== ps) return;
+        signal(peerId, "end");
+        teardown("Stranger disconnected.");
       },
     });
     peerRef.current = ps;
+    if (connectTimer.current) clearTimeout(connectTimer.current);
+    connectTimer.current = setTimeout(() => {
+      if (peerRef.current === ps && connRef.current.kind === "connecting") {
+        signal(peerId, "end");
+        teardown("Couldn't reach the stranger.");
+      }
+    }, CONNECT_TIMEOUT_MS);
   }
 
   function handleControl(ctrl: PeerControl) {
@@ -131,13 +160,13 @@ export default function Home() {
   function requestConnection(peerId: string) {
     if (connRef.current.kind !== "idle") return;
     setConn({ kind: "requesting", peerId });
-    void sendSignal(sessionId, peerId, "request");
+    signal(peerId, "request");
     requestTimer.current = setTimeout(() => {
       if (
         connRef.current.kind === "requesting" &&
         connRef.current.peerId === peerId
       ) {
-        void sendSignal(sessionId, peerId, "end");
+        signal(peerId, "end");
         teardown("No answer.");
       }
     }, REQUEST_TIMEOUT_MS);
@@ -145,7 +174,7 @@ export default function Home() {
 
   function cancelRequest() {
     if (connRef.current.kind === "requesting") {
-      void sendSignal(sessionId, connRef.current.peerId, "end");
+      signal(connRef.current.peerId, "end");
     }
     teardown();
   }
@@ -154,20 +183,20 @@ export default function Home() {
     if (connRef.current.kind !== "incoming") return;
     const peerId = connRef.current.peerId;
     startPeer(peerId, false);
-    void sendSignal(sessionId, peerId, "accept");
+    signal(peerId, "accept");
     setConn({ kind: "connecting", peerId });
   }
 
   function declineIncoming() {
     if (connRef.current.kind !== "incoming") return;
-    void sendSignal(sessionId, connRef.current.peerId, "decline");
+    signal(connRef.current.peerId, "decline");
     setConn({ kind: "idle" });
   }
 
   function endConnection() {
     const c = connRef.current;
     if (c.kind === "connecting" || c.kind === "connected") {
-      void sendSignal(sessionId, c.peerId, "end");
+      signal(c.peerId, "end");
     }
     teardown();
   }
@@ -214,7 +243,7 @@ export default function Home() {
         if (connRef.current.kind === "idle") {
           setConn({ kind: "incoming", peerId: sig.fromId });
         } else {
-          void sendSignal(sessionId, sig.fromId, "decline");
+          signal(sig.fromId, "decline");
         }
         break;
       }
@@ -224,6 +253,10 @@ export default function Home() {
           if (requestTimer.current) clearTimeout(requestTimer.current);
           startPeer(sig.fromId, true);
           setConn({ kind: "connecting", peerId: sig.fromId });
+        } else if (!(c.kind !== "idle" && c.peerId === sig.fromId)) {
+          // A late accept for a request we already cancelled / timed out.
+          // Release the other side so it isn't left "Connecting…" forever.
+          signal(sig.fromId, "end");
         }
         break;
       }
@@ -265,9 +298,21 @@ export default function Home() {
     }
   }
 
+  // If the person we're talking to drops off the map (tab closed without a
+  // clean leave, reaped as stale), end the conversation on our side too.
+  function checkPeerStillOnline(online: PeerDot[]) {
+    const c = connRef.current;
+    if (c.kind === "idle") return;
+    if (online.some((p) => p.id === c.peerId)) return;
+    signal(c.peerId, "end");
+    teardown(c.kind === "incoming" ? undefined : "Stranger went offline.");
+  }
+
   const processSignalRef = useRef(processSignal);
+  const peersSeenRef = useRef(checkPeerStillOnline);
   useEffect(() => {
     processSignalRef.current = processSignal;
+    peersSeenRef.current = checkPeerStillOnline;
   });
 
   useEffect(() => {
@@ -279,8 +324,14 @@ export default function Home() {
       try {
         const data = await poll(sessionId);
         if (!active) return;
+        if (data.gone && locationRef.current) {
+          // Our presence was reaped (e.g. the tab was throttled in the
+          // background). Re-join so we reappear on everyone's map.
+          await join(sessionId, locationRef.current.lat, locationRef.current.lng);
+        }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
+        peersSeenRef.current(data.peers);
       } catch {}
       if (active) timer = setTimeout(tick, POLL_INTERVAL_MS);
     };
@@ -304,8 +355,9 @@ export default function Home() {
   }, [sessionId, phase]);
 
   async function handleReady(lat: number, lng: number) {
-    setMyLocation({ lat, lng });
     await join(sessionId, lat, lng);
+    locationRef.current = { lat, lng };
+    setMyLocation({ lat, lng });
     setPhase("live");
   }
 

@@ -12,6 +12,7 @@ interface PeerCallbacks {
   onRemoteStream: (stream: MediaStream | null) => void;
   onConnectionState: (state: RTCPeerConnectionState) => void;
   onChannelOpen: () => void;
+  onChannelClose: () => void;
 }
 
 const ICE_CONFIG: RTCConfiguration = {
@@ -28,6 +29,7 @@ export class PeerSession {
   private closed = false;
   private readonly cb: PeerCallbacks;
   private pendingCandidates: RTCIceCandidateInit[] = [];
+  private signalQueue: Promise<void> = Promise.resolve();
 
   constructor(initiator: boolean, cb: PeerCallbacks) {
     this.cb = cb;
@@ -47,6 +49,8 @@ export class PeerSession {
         if (this.pc.localDescription) {
           this.cb.onSignal("offer", JSON.stringify(this.pc.localDescription));
         }
+      } catch {
+        // Closed mid-negotiation; nothing to do.
       } finally {
         this.makingOffer = false;
       }
@@ -73,6 +77,11 @@ export class PeerSession {
 
   private wireDataChannel(dc: RTCDataChannel) {
     dc.onopen = () => this.cb.onChannelOpen();
+    // The remote closing its RTCPeerConnection (hang-up, tab closed) closes
+    // the channel long before ICE reports "failed".
+    dc.onclose = () => {
+      if (!this.closed) this.cb.onChannelClose();
+    };
     dc.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data as string);
@@ -85,7 +94,17 @@ export class PeerSession {
     };
   }
 
-  async handleSignal(type: DescType, payload: string) {
+  // Signals must be applied strictly in arrival order: an ICE candidate or an
+  // answer racing ahead of an in-flight setRemoteDescription breaks the
+  // handshake, so every call is chained onto the previous one.
+  handleSignal(type: DescType, payload: string): Promise<void> {
+    this.signalQueue = this.signalQueue
+      .then(() => this.applySignal(type, payload))
+      .catch(() => {});
+    return this.signalQueue;
+  }
+
+  private async applySignal(type: DescType, payload: string) {
     if (this.closed) return;
     const data = JSON.parse(payload);
 
@@ -107,8 +126,9 @@ export class PeerSession {
     this.ignoreOffer = !this.polite && offerCollision;
     if (this.ignoreOffer) return;
 
-    await this.flushPendingCandidates();
     await this.pc.setRemoteDescription(desc);
+    // Candidates can only be added once a remote description exists.
+    await this.flushPendingCandidates();
     if (desc.type === "offer") {
       await this.pc.setLocalDescription();
       if (this.pc.localDescription) {
@@ -129,7 +149,7 @@ export class PeerSession {
   }
 
   sendChat(text: string) {
-    this.safeSend({ t: "msg", text });
+    this.safeSend({ t: "chat", text });
   }
 
   sendControl(ctrl: PeerControl) {
