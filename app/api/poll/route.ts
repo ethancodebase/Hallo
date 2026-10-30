@@ -1,21 +1,29 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STALE_MS, SIGNAL_TTL_MS } from "@/lib/presence";
+import { bearerToken, clientIp, publicIdFor, unauthorized } from "@/lib/session";
+import { removeSessions } from "@/lib/connection";
+import { rateLimit } from "@/lib/rateLimit";
 import type { PollResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/poll?id= — the single endpoint that drives the live map.
-// It (1) heartbeats the caller, (2) reaps stale presence + orphan signals,
-// (3) returns the filtered online peers, and (4) drains this user's mailbox.
-export async function GET(request: NextRequest) {
-  const params = request.nextUrl.searchParams;
-  const id = params.get("id");
+// Bounds the response (and the DB scan) if the map is ever flooded.
+const MAX_PEERS = 1000;
 
-  if (!id) {
-    return Response.json({ error: "missing id" }, { status: 400 });
-  }
+// GET /api/poll — Authorization: Bearer <token>. The single endpoint that
+// drives the live map. It (1) heartbeats the caller, (2) reaps stale presence +
+// orphan signals, (3) returns the filtered online peers, and (4) drains this
+// user's mailbox. The token is sent as a header, not a query param, so it never
+// lands in access logs, proxies or browser history.
+export async function GET(request: NextRequest) {
+  const limited = rateLimit("poll", clientIp(request));
+  if (limited) return limited;
+
+  const token = bearerToken(request);
+  if (!token) return unauthorized();
+  const id = publicIdFor(token);
 
   const now = Date.now();
   const staleCutoff = new Date(now - STALE_MS);
@@ -27,9 +35,14 @@ export async function GET(request: NextRequest) {
     data: { lastSeen: new Date(now) },
   });
 
-  // 2) Reap stale presence rows and orphaned signals (independent deletes —
-  // no atomicity needed, and avoids transactions over a PgBouncer pooler).
-  await prisma.presence.deleteMany({ where: { lastSeen: { lt: staleCutoff } } });
+  // 2) Reap stale presence rows (releasing their partners) and orphaned
+  // signals. Independent statements — avoids transactions over a PgBouncer
+  // pooler.
+  const stale = await prisma.presence.findMany({
+    where: { lastSeen: { lt: staleCutoff } },
+    select: { id: true },
+  });
+  await removeSessions(stale.map((s) => s.id));
   await prisma.signal.deleteMany({ where: { createdAt: { lt: signalCutoff } } });
 
   // 3) Online peers, excluding self.
@@ -39,6 +52,8 @@ export async function GET(request: NextRequest) {
       lastSeen: { gte: staleCutoff },
     },
     select: { id: true, lat: true, lng: true, busy: true },
+    orderBy: { lastSeen: "desc" },
+    take: MAX_PEERS,
   });
 
   // 4) Drain this user's mailbox: read, then delete exactly what we read so a
@@ -74,5 +89,7 @@ export async function GET(request: NextRequest) {
     })),
   };
 
-  return Response.json(response);
+  return Response.json(response, {
+    headers: { "Cache-Control": "no-store" },
+  });
 }

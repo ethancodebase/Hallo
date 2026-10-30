@@ -1,17 +1,10 @@
-// crypto.randomUUID only exists in secure contexts (HTTPS / localhost), so
-// opening the app over a plain-HTTP LAN address would crash on load.
-// getRandomValues is available everywhere and is just as unguessable.
-export function randomId(): string {
-  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
-  return [
-    hex.slice(0, 4).join(""),
-    hex.slice(4, 6).join(""),
-    hex.slice(6, 8).join(""),
-    hex.slice(8, 10).join(""),
-    hex.slice(10).join(""),
-  ].join("-");
+// The session's secret token: 256 random bits, base64url. It authenticates every
+// API call and is never shown to other users (they only see a hash of it).
+// getRandomValues works outside secure contexts too (plain-HTTP LAN testing),
+// unlike crypto.randomUUID.
+export function randomToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

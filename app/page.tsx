@@ -9,7 +9,7 @@ import VideoPanel from "./components/VideoPanel";
 import { join, leave, poll, sendSignal } from "@/lib/api";
 import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
-import { randomId } from "@/lib/id";
+import { randomToken } from "@/lib/id";
 import { type PeerDot, type SignalMsg, type SignalType } from "@/lib/types";
 
 type Conn =
@@ -28,7 +28,7 @@ const CONNECT_TIMEOUT_MS = 25_000;
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
-  const [sessionId] = useState(() => randomId());
+  const [sessionToken] = useState(() => randomToken());
   const [peers, setPeers] = useState<PeerDot[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export default function Home() {
   const sendChain = useRef<Promise<void>>(Promise.resolve());
   function signal(toId: string, type: SignalType, payload?: string) {
     sendChain.current = sendChain.current
-      .then(() => sendSignal(sessionId, toId, type, payload))
+      .then(() => sendSignal(sessionToken, toId, type, payload))
       .catch(() => {});
   }
 
@@ -316,18 +316,18 @@ export default function Home() {
   });
 
   useEffect(() => {
-    if (phase !== "live" || !sessionId) return;
+    if (phase !== "live" || !sessionToken) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
       try {
-        const data = await poll(sessionId);
+        const data = await poll(sessionToken);
         if (!active) return;
         if (data.gone && locationRef.current) {
           // Our presence was reaped (e.g. the tab was throttled in the
           // background). Re-join so we reappear on everyone's map.
-          await join(sessionId, locationRef.current.lat, locationRef.current.lng);
+          await join(sessionToken, locationRef.current.lat, locationRef.current.lng);
         }
         setPeers(data.peers);
         for (const s of data.signals) processSignalRef.current(s);
@@ -341,21 +341,21 @@ export default function Home() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [phase, sessionId]);
+  }, [phase, sessionToken]);
 
   useEffect(() => {
-    if (!sessionId || phase !== "live") return;
-    const onLeave = () => leave(sessionId);
+    if (!sessionToken || phase !== "live") return;
+    const onLeave = () => leave(sessionToken);
     window.addEventListener("pagehide", onLeave);
     window.addEventListener("beforeunload", onLeave);
     return () => {
       window.removeEventListener("pagehide", onLeave);
       window.removeEventListener("beforeunload", onLeave);
     };
-  }, [sessionId, phase]);
+  }, [sessionToken, phase]);
 
   async function handleReady(lat: number, lng: number) {
-    await join(sessionId, lat, lng);
+    await join(sessionToken, lat, lng);
     locationRef.current = { lat, lng };
     setMyLocation({ lat, lng });
     setPhase("live");

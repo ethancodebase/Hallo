@@ -12,13 +12,17 @@ datasource db {
 }
 
 model Presence {
-  id       String   @id // client-generated session uuid
-  lat      Float // ALREADY privacy-offset coords (raw is never stored)
-  lng      Float
-  busy     Boolean  @default(false) // true while in an active connection
-  lastSeen DateTime
+  id        String   @id // public id = one-way hash of the client's secret session token
+  lat       Float // ALREADY privacy-offset coords (raw is never stored)
+  lng       Float
+  busy      Boolean  @default(false) // true while in an active connection
+  peerId    String? // the partner of the active connection (set on accept)
+  requestTo String? // the one outstanding connection request this user has sent
+  lastSeen  DateTime
 
   @@index([lastSeen])
+  @@index([peerId])
+  @@index([requestTo])
 }
 
 model Signal {

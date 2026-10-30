@@ -1,44 +1,54 @@
-// Client-side helpers for talking to the coordination API.
+// Client-side helpers for talking to the coordination API. `token` is the
+// session's secret; it goes in the Authorization header (never the URL).
 import type { PollResponse, SignalType } from "@/lib/types";
 
+function authHeaders(token: string): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 export async function join(
-  id: string,
+  token: string,
   lat: number,
   lng: number,
 ): Promise<void> {
   const res = await fetch("/api/join", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, lat, lng }),
+    headers: authHeaders(token),
+    body: JSON.stringify({ lat, lng }),
   });
   if (!res.ok) throw new Error(`join failed: ${res.status}`);
 }
 
-export async function poll(id: string): Promise<PollResponse> {
-  const res = await fetch(`/api/poll?id=${encodeURIComponent(id)}`, {
+export async function poll(token: string): Promise<PollResponse> {
+  const res = await fetch("/api/poll", {
     cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`poll failed: ${res.status}`);
   return res.json();
 }
 
 export async function sendSignal(
-  fromId: string,
+  token: string,
   toId: string,
   type: SignalType,
   payload?: string,
 ): Promise<void> {
   const res = await fetch("/api/signal", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fromId, toId, type, payload }),
+    headers: authHeaders(token),
+    body: JSON.stringify({ toId, type, payload }),
   });
   if (!res.ok) throw new Error(`signal failed: ${res.status}`);
 }
 
-// Fire-and-forget leave that survives the tab closing.
-export function leave(id: string): void {
-  const body = JSON.stringify({ id });
+// Fire-and-forget leave that survives the tab closing. sendBeacon can't set
+// headers, so the token travels in the body.
+export function leave(token: string): void {
+  const body = JSON.stringify({ token });
   if (typeof navigator !== "undefined" && navigator.sendBeacon) {
     navigator.sendBeacon("/api/leave", body);
   } else {
