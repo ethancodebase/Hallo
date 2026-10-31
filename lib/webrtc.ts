@@ -204,7 +204,8 @@ export class PeerSession {
   async startVideo(): Promise<MediaStream> {
     if (!this.localStream) {
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        // Front camera on phones; `video: true` can pick the rear one.
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true,
       });
       for (const track of this.localStream.getTracks()) {
