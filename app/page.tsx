@@ -6,8 +6,13 @@ import WorldMap from "./components/WorldMap";
 import ConnectionPrompt from "./components/ConnectionPrompt";
 import ChatPanel, { type ChatMessage } from "./components/ChatPanel";
 import VideoPanel from "./components/VideoPanel";
-import { join, leave, poll, sendSignal } from "@/lib/api";
-import { PeerSession, type DescType, type PeerControl } from "@/lib/webrtc";
+import { fetchIceConfig, join, leave, poll, sendSignal } from "@/lib/api";
+import {
+  DEFAULT_ICE_SERVERS,
+  PeerSession,
+  type DescType,
+  type PeerControl,
+} from "@/lib/webrtc";
 import { POLL_INTERVAL_MS } from "@/lib/presence";
 import { randomToken } from "@/lib/id";
 import { type PeerDot, type SignalMsg, type SignalType } from "@/lib/types";
@@ -58,6 +63,27 @@ export default function Home() {
   const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  // STUN/TURN servers from /api/ice, cached until the server-given expiry.
+  const iceRef = useRef<{ servers: RTCIceServer[]; expiresAt: number } | null>(null);
+  const iceInflight = useRef<Promise<RTCIceServer[]> | null>(null);
+  function getIceServers(): Promise<RTCIceServer[]> {
+    const cached = iceRef.current;
+    if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.servers);
+    if (!iceInflight.current) {
+      iceInflight.current = fetchIceConfig(sessionToken)
+        .then(({ iceServers, expiresAt }) => {
+          iceRef.current = { servers: iceServers, expiresAt };
+          return iceServers;
+        })
+        // Never block a connection on this: direct (STUN) still works for most.
+        .catch(() => cached?.servers ?? DEFAULT_ICE_SERVERS)
+        .finally(() => {
+          iceInflight.current = null;
+        });
+    }
+    return iceInflight.current;
+  }
+
   // Outbound signals are sent one at a time so they land in the recipient's
   // mailbox in the order they were produced (offer before its ICE, etc.).
   const sendChain = useRef<Promise<void>>(Promise.resolve());
@@ -89,7 +115,7 @@ export default function Home() {
     if (message) showNotice(message);
   }
 
-  function startPeer(peerId: string, initiator: boolean) {
+  function startPeer(peerId: string, initiator: boolean, iceServers: RTCIceServer[]) {
     const ps = new PeerSession(initiator, {
       onSignal: (type: DescType, payload: string) => {
         signal(peerId, type, payload);
@@ -111,7 +137,7 @@ export default function Home() {
         signal(peerId, "end");
         teardown("Stranger disconnected.");
       },
-    });
+    }, iceServers);
     peerRef.current = ps;
     if (connectTimer.current) clearTimeout(connectTimer.current);
     connectTimer.current = setTimeout(() => {
@@ -179,10 +205,14 @@ export default function Home() {
     teardown();
   }
 
-  function acceptIncoming() {
+  async function acceptIncoming() {
     if (connRef.current.kind !== "incoming") return;
     const peerId = connRef.current.peerId;
-    startPeer(peerId, false);
+    const iceServers = await getIceServers();
+    // The requester may have cancelled while we were fetching credentials.
+    const c = connRef.current;
+    if (c.kind !== "incoming" || c.peerId !== peerId || peerRef.current) return;
+    startPeer(peerId, false, iceServers);
     signal(peerId, "accept");
     setConn({ kind: "connecting", peerId });
   }
@@ -251,8 +281,14 @@ export default function Home() {
         const c = connRef.current;
         if (c.kind === "requesting" && c.peerId === sig.fromId) {
           if (requestTimer.current) clearTimeout(requestTimer.current);
-          startPeer(sig.fromId, true);
-          setConn({ kind: "connecting", peerId: sig.fromId });
+          const peerId = sig.fromId;
+          setConn({ kind: "connecting", peerId });
+          void getIceServers().then((iceServers) => {
+            // Torn down (hang-up, peer left) while credentials were loading.
+            const now = connRef.current;
+            if (now.kind !== "connecting" || now.peerId !== peerId || peerRef.current) return;
+            startPeer(peerId, true, iceServers);
+          });
         } else if (!(c.kind !== "idle" && c.peerId === sig.fromId)) {
           // A late accept for a request we already cancelled / timed out.
           // Release the other side so it isn't left "Connecting…" forever.
@@ -359,6 +395,8 @@ export default function Home() {
     locationRef.current = { lat, lng };
     setMyLocation({ lat, lng });
     setPhase("live");
+    // Warm the TURN credentials so accepting a request isn't delayed by them.
+    void getIceServers();
   }
 
   if (phase === "gate") {
@@ -413,8 +451,12 @@ export default function Home() {
           connected={conn.kind === "connected"}
           videoBusy={video !== "none"}
           onSend={(text) => {
-            peerRef.current?.sendChat(text);
-            addMessage(true, text);
+            if (peerRef.current?.sendChat(text)) {
+              addMessage(true, text);
+              return true;
+            }
+            showNotice("Message not delivered — the connection was lost.");
+            return false;
           }}
           onStartVideo={startVideoRequest}
           onEnd={endConnection}

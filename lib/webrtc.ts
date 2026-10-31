@@ -18,9 +18,9 @@ interface PeerCallbacks {
 const MAX_CHAT_CHARS = 2000;
 const MAX_FRAME = 16 * 1024;
 
-const ICE_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+];
 
 export class PeerSession {
   private pc: RTCPeerConnection;
@@ -34,10 +34,16 @@ export class PeerSession {
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private signalQueue: Promise<void> = Promise.resolve();
 
-  constructor(initiator: boolean, cb: PeerCallbacks) {
+  constructor(
+    initiator: boolean,
+    cb: PeerCallbacks,
+    iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS,
+  ) {
     this.cb = cb;
     this.polite = !initiator;
-    this.pc = new RTCPeerConnection(ICE_CONFIG);
+    // "all" tries direct paths first and falls back to the TURN relay only
+    // when they fail (VPNs, symmetric NATs, UDP-blocking firewalls).
+    this.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "all" });
 
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) {
@@ -153,17 +159,22 @@ export class PeerSession {
     }
   }
 
-  sendChat(text: string) {
-    this.safeSend({ t: "chat", text });
+  sendChat(text: string): boolean {
+    return this.safeSend({ t: "chat", text });
   }
 
   sendControl(ctrl: PeerControl) {
     this.safeSend({ t: "ctrl", ctrl });
   }
 
-  private safeSend(obj: unknown) {
-    if (this.dc && this.dc.readyState === "open") {
+  // Returns false when the frame could not be handed to the data channel.
+  private safeSend(obj: unknown): boolean {
+    if (!this.dc || this.dc.readyState !== "open") return false;
+    try {
       this.dc.send(JSON.stringify(obj));
+      return true;
+    } catch {
+      return false;
     }
   }
 
