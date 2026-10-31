@@ -17,6 +17,12 @@ interface PeerCallbacks {
 
 const MAX_CHAT_CHARS = 2000;
 const MAX_FRAME = 16 * 1024;
+// A "disconnected" link often heals on its own (brief Wi-Fi drop); give it a
+// moment before forcing a new path.
+const DISCONNECT_GRACE_MS = 4_000;
+// ICE restarts let a call survive network changes (Wi-Fi ↔ mobile, VPN
+// reconnects) and fall back to the TURN relay, without dropping the chat.
+const MAX_ICE_RESTARTS = 3;
 
 export const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
@@ -33,6 +39,8 @@ export class PeerSession {
   private readonly cb: PeerCallbacks;
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private signalQueue: Promise<void> = Promise.resolve();
+  private iceRestarts = 0;
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     initiator: boolean,
@@ -70,7 +78,22 @@ export class PeerSession {
     };
 
     this.pc.onconnectionstatechange = () => {
-      this.cb.onConnectionState(this.pc.connectionState);
+      const state = this.pc.connectionState;
+      if (this.closed) return;
+      if (state === "connected") {
+        this.clearDisconnectTimer();
+        this.iceRestarts = 0;
+      } else if (state === "disconnected") {
+        this.clearDisconnectTimer();
+        this.disconnectTimer = setTimeout(() => {
+          if (this.pc.connectionState === "disconnected") this.tryIceRestart();
+        }, DISCONNECT_GRACE_MS);
+      } else if (state === "failed") {
+        this.clearDisconnectTimer();
+        // Only report failure once every restart attempt is used up.
+        if (this.tryIceRestart()) return;
+      }
+      this.cb.onConnectionState(state);
     };
 
     if (initiator) {
@@ -205,9 +228,28 @@ export class PeerSession {
     }
   }
 
+  // Gathers fresh candidates (including TURN relays) and renegotiates via
+  // onnegotiationneeded; the data channel survives the restart.
+  private tryIceRestart(): boolean {
+    if (this.closed || this.iceRestarts >= MAX_ICE_RESTARTS) return false;
+    this.iceRestarts++;
+    try {
+      this.pc.restartIce();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private clearDisconnectTimer() {
+    if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
+    this.disconnectTimer = null;
+  }
+
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.clearDisconnectTimer();
     this.stopVideo();
     if (this.dc) {
       try {

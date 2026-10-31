@@ -29,7 +29,8 @@ type VideoState = "none" | "requesting" | "incoming" | "active";
 const REQUEST_TIMEOUT_MS = 30_000;
 // Accepted but the data channel never opened (peer vanished mid-handshake,
 // or an unreachable NAT). Give up instead of "Connecting…" forever.
-const CONNECT_TIMEOUT_MS = 25_000;
+// Long enough for a TURN-over-TLS fallback plus one ICE restart.
+const CONNECT_TIMEOUT_MS = 40_000;
 
 export default function Home() {
   const [phase, setPhase] = useState<"gate" | "live">("gate");
@@ -61,6 +62,7 @@ export default function Home() {
   const msgId = useRef(0);
   const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRequestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // STUN/TURN servers from /api/ice, cached until the server-given expiry.
@@ -105,6 +107,7 @@ export default function Home() {
   function teardown(message?: string) {
     if (requestTimer.current) clearTimeout(requestTimer.current);
     if (connectTimer.current) clearTimeout(connectTimer.current);
+    clearVideoRequestTimer();
     peerRef.current?.close();
     peerRef.current = null;
     setLocalStream(null);
@@ -124,8 +127,11 @@ export default function Home() {
       onControl: (ctrl) => handleControl(ctrl),
       onRemoteStream: (stream) => setRemoteStream(stream),
       onConnectionState: (state) => {
-        if (state === "failed") {
-          teardown("Connection failed (network).");
+        if (state === "disconnected" && connRef.current.kind === "connected") {
+          showNotice("Connection unstable — reconnecting…");
+        } else if (state === "failed") {
+          signal(peerId, "end");
+          teardown("Connection failed — the network blocked every route.");
         }
       },
       onChannelOpen: () => {
@@ -156,8 +162,14 @@ export default function Home() {
         break;
       case "video-accept":
         if (videoRef.current === "requesting" && ps) {
+          clearVideoRequestTimer();
           ps.startVideo()
             .then((stream) => {
+              // Cancelled while the camera permission prompt was open.
+              if (videoRef.current !== "requesting" || peerRef.current !== ps) {
+                ps.stopVideo();
+                return;
+              }
               setLocalStream(stream);
               setVideo("active");
             })
@@ -166,15 +178,21 @@ export default function Home() {
               ps.sendControl("video-end");
               showNotice("Camera unavailable.");
             });
+        } else if (videoRef.current !== "active") {
+          // We cancelled before their accept arrived; release their camera.
+          ps?.sendControl("video-end");
         }
         break;
       case "video-decline":
         if (videoRef.current === "requesting") {
+          clearVideoRequestTimer();
           setVideo("none");
           showNotice("Video declined.");
         }
         break;
       case "video-end":
+        if (videoRef.current === "incoming") showNotice("Video request cancelled.");
+        clearVideoRequestTimer();
         ps?.stopVideo();
         setLocalStream(null);
         setRemoteStream(null);
@@ -231,10 +249,37 @@ export default function Home() {
     teardown();
   }
 
+  function clearVideoRequestTimer() {
+    if (videoRequestTimer.current) clearTimeout(videoRequestTimer.current);
+    videoRequestTimer.current = null;
+  }
+
   function startVideoRequest() {
     if (videoRef.current !== "none" || !peerRef.current) return;
     setVideo("requesting");
     peerRef.current.sendControl("video-request");
+    clearVideoRequestTimer();
+    videoRequestTimer.current = setTimeout(() => {
+      if (videoRef.current === "requesting") cancelVideoRequest("No answer to video request.");
+    }, REQUEST_TIMEOUT_MS);
+  }
+
+  function cancelVideoRequest(message?: string) {
+    if (videoRef.current !== "requesting") return;
+    clearVideoRequestTimer();
+    peerRef.current?.stopVideo();
+    peerRef.current?.sendControl("video-end");
+    setVideo("none");
+    if (message) showNotice(message);
+  }
+
+  function sendChat(text: string): boolean {
+    if (peerRef.current?.sendChat(text)) {
+      addMessage(true, text);
+      return true;
+    }
+    showNotice("Message not delivered — the connection was lost.");
+    return false;
   }
 
   function acceptVideo() {
@@ -242,6 +287,11 @@ export default function Home() {
     if (!ps) return;
     ps.startVideo()
       .then((stream) => {
+        // They cancelled while our camera permission prompt was open.
+        if (videoRef.current !== "incoming" || peerRef.current !== ps) {
+          ps.stopVideo();
+          return;
+        }
         setLocalStream(stream);
         ps.sendControl("video-accept");
         setVideo("active");
@@ -450,22 +500,21 @@ export default function Home() {
           messages={messages}
           connected={conn.kind === "connected"}
           videoBusy={video !== "none"}
-          onSend={(text) => {
-            if (peerRef.current?.sendChat(text)) {
-              addMessage(true, text);
-              return true;
-            }
-            showNotice("Message not delivered — the connection was lost.");
-            return false;
-          }}
+          onSend={sendChat}
           onStartVideo={startVideoRequest}
           onEnd={endConnection}
         />
       )}
 
       {video === "requesting" && (
-        <div className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
-          Waiting for stranger to accept video…
+        <div className="absolute bottom-24 left-1/2 z-30 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-3 rounded-full bg-zinc-800/90 px-4 py-2 text-sm text-zinc-100 shadow-lg backdrop-blur">
+          <span>Waiting for stranger to accept video…</span>
+          <button
+            onClick={() => cancelVideoRequest()}
+            className="shrink-0 rounded-full bg-zinc-700 px-3 py-1 text-xs hover:bg-zinc-600"
+          >
+            Cancel
+          </button>
         </div>
       )}
 
@@ -481,10 +530,14 @@ export default function Home() {
         />
       )}
 
-      {video === "active" && (
+      {video === "active" && inChat && (
         <VideoPanel
+          peerId={conn.peerId}
           localStream={localStream}
           remoteStream={remoteStream}
+          messages={messages}
+          connected={conn.kind === "connected"}
+          onSend={sendChat}
           onEnd={endVideo}
         />
       )}

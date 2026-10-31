@@ -16,6 +16,8 @@ export interface IceConfig {
   iceServers: RTCIceServer[];
   /** Epoch ms after which the client should fetch fresh credentials. */
   expiresAt: number;
+  /** "unconfigured" = no provider env vars; "error" = provider request failed. */
+  relay: "ok" | "unconfigured" | "error";
 }
 
 const STUN_ONLY: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -36,20 +38,25 @@ export function turnProvider(): "cloudflare" | "metered" | "static" | null {
 
 export async function getIceConfig(): Promise<IceConfig> {
   const expiresAt = Date.now() + CLIENT_REFRESH_S * 1000;
+  const provider = turnProvider();
   try {
-    switch (turnProvider()) {
+    switch (provider) {
       case "cloudflare":
-        return { iceServers: await cloudflare(), expiresAt };
+        return { iceServers: await cloudflare(), expiresAt, relay: "ok" };
       case "metered":
-        return { iceServers: await metered(), expiresAt };
+        return { iceServers: await metered(), expiresAt, relay: "ok" };
       case "static":
-        return { iceServers: staticTurn(), expiresAt };
+        return { iceServers: staticTurn(), expiresAt, relay: "ok" };
     }
   } catch (err) {
     console.error("TURN credential fetch failed; falling back to STUN only:", err);
   }
   // Retry soon rather than pinning a STUN-only config for an hour.
-  return { iceServers: STUN_ONLY, expiresAt: Date.now() + 60_000 };
+  return {
+    iceServers: STUN_ONLY,
+    expiresAt: Date.now() + 60_000,
+    relay: provider ? "error" : "unconfigured",
+  };
 }
 
 async function cloudflare(): Promise<RTCIceServer[]> {

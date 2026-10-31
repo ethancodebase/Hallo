@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { wispColor, wispName } from "@/lib/wisps";
+import ChatThread, { type ChatMessage } from "./ChatThread";
 
-export interface ChatMessage {
-  id: number;
-  mine: boolean;
-  text: string;
-}
+export type { ChatMessage };
 
 export default function ChatPanel({
   peerId,
@@ -26,21 +22,8 @@ export default function ChatPanel({
   onStartVideo: () => void;
   onEnd: () => void;
 }) {
-  const [draft, setDraft] = useState("");
-  const endRef = useRef<HTMLDivElement>(null);
   const name = wispName(peerId);
   const wisp = { "--wisp": wispColor(peerId) } as React.CSSProperties;
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || !connected) return;
-    if (onSend(text)) setDraft("");
-  }
 
   return (
     <div
@@ -82,9 +65,12 @@ export default function ChatPanel({
         </div>
       </header>
 
-      <div className="ledger-scroll flex-1 space-y-2.5 overflow-y-auto p-4">
-        {messages.length === 0 &&
-          (connected ? (
+      <ChatThread
+        messages={messages}
+        connected={connected}
+        onSend={onSend}
+        emptyState={
+          connected ? (
             <div className="mt-10 text-center">
               <p className="font-fantasy text-sm tracking-wide text-amber-100/90">
                 ✦ A thread of light connects you ✦
@@ -104,46 +90,9 @@ export default function ChatPanel({
                 thread is bound.
               </p>
             </div>
-          ))}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`chat-bubble-in flex ${m.mine ? "justify-end" : "justify-start"}`}
-          >
-            <span
-              className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                m.mine
-                  ? "rounded-br-md bg-gradient-to-br from-amber-100 to-amber-300 text-[#2a1846] shadow-[0_0_16px_rgba(253,227,167,0.25)]"
-                  : "chat-bubble-theirs rounded-bl-md text-violet-50"
-              }`}
-            >
-              {m.text}
-            </span>
-          </div>
-        ))}
-        <div ref={endRef} />
-      </div>
-
-      <form
-        onSubmit={submit}
-        className="flex gap-2 border-t border-violet-300/15 bg-black/20 p-3"
-      >
-        <input
-          value={draft}
-          maxLength={2000}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={connected ? "Whisper a message…" : "Weaving the connection…"}
-          disabled={!connected}
-          className="flex-1 rounded-full border border-violet-300/20 bg-white/5 px-4 py-2 text-sm text-violet-50 outline-none transition placeholder:text-violet-300/50 focus:border-amber-200/60 focus:shadow-[0_0_14px_rgba(253,227,167,0.2)] disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!connected || !draft.trim()}
-          className="rounded-full bg-gradient-to-r from-amber-200 to-amber-300 px-4 py-2 font-fantasy text-xs font-bold tracking-[0.12em] text-[#2a1846] shadow-[0_0_16px_rgba(253,227,167,0.35)] transition hover:from-amber-100 hover:to-amber-200 disabled:opacity-40 disabled:shadow-none"
-        >
-          Send ✦
-        </button>
-      </form>
+          )
+        }
+      />
     </div>
   );
 }
