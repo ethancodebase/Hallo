@@ -68,6 +68,7 @@ export default function WorldMap({
   const markersRef = useRef<Map<string, Marker>>(new Map());
   const meMarkerRef = useRef<Marker | null>(null);
   const [ready, setReady] = useState(false);
+  const [zoom, setZoom] = useState(me ? 4 : 1.4);
   const [activeId, setActiveId] = useState<string | null>(null);
   const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,6 +141,10 @@ export default function WorldMap({
       });
       map.on("load", () => {
         if (!cancelled) setReady(true);
+      });
+      // Keep the zoom slider in sync with wheel, pinch, and flyTo zooms.
+      map.on("zoom", () => {
+        if (!cancelled) setZoom(map.getZoom());
       });
       mapRef.current = map;
     })();
@@ -264,10 +269,75 @@ export default function WorldMap({
         />
       </div>
 
+      {TOKEN && (
+        <ZoomSlider
+          zoom={zoom}
+          disabled={!ready}
+          onZoom={(z, smooth) => {
+            const map = mapRef.current;
+            if (!map) return;
+            if (smooth) map.easeTo({ zoom: z, duration: 250 });
+            else map.setZoom(z);
+          }}
+        />
+      )}
+
       {/* Online count */}
       <div className="absolute bottom-4 left-4 rounded-full border border-violet-300/20 bg-[#140c28]/80 px-3 py-1.5 font-fantasy text-xs tracking-wide text-violet-100 backdrop-blur">
         ✦ {peers.length} {peers.length === 1 ? "light" : "lights"} wandering
       </div>
+    </div>
+  );
+}
+
+const MIN_ZOOM = 0;
+const MAX_ZOOM = 18;
+
+function ZoomSlider({
+  zoom,
+  disabled,
+  onZoom,
+}: {
+  zoom: number;
+  disabled: boolean;
+  onZoom: (zoom: number, smooth: boolean) => void;
+}) {
+  const clamp = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+  const btn =
+    "flex h-8 w-8 items-center justify-center rounded-full font-fantasy text-lg leading-none text-amber-100 transition hover:bg-amber-200/15 hover:text-amber-50 disabled:opacity-40";
+
+  return (
+    <div className="absolute right-4 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-amber-200/25 bg-gradient-to-b from-[#1c1238]/90 to-[#0b0820]/90 px-1.5 py-2 shadow-[0_0_30px_rgba(196,161,255,0.25)] backdrop-blur-md">
+      <button
+        type="button"
+        onClick={() => onZoom(clamp(Math.round(zoom) + 1), true)}
+        disabled={disabled || zoom >= MAX_ZOOM}
+        aria-label="Zoom in"
+        className={btn}
+      >
+        +
+      </button>
+      <input
+        type="range"
+        min={MIN_ZOOM}
+        max={MAX_ZOOM}
+        step={0.1}
+        value={clamp(zoom)}
+        onChange={(e) => onZoom(Number(e.target.value), false)}
+        disabled={disabled}
+        aria-label="Map zoom"
+        aria-orientation="vertical"
+        className="zoom-slider h-40 w-6 cursor-pointer disabled:cursor-default"
+      />
+      <button
+        type="button"
+        onClick={() => onZoom(clamp(Math.round(zoom) - 1), true)}
+        disabled={disabled || zoom <= MIN_ZOOM}
+        aria-label="Zoom out"
+        className={btn}
+      >
+        −
+      </button>
     </div>
   );
 }
