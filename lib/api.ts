@@ -31,6 +31,17 @@ export async function poll(token: string): Promise<PollResponse> {
   return res.json();
 }
 
+export async function fetchIceConfig(
+  token: string,
+): Promise<{ iceServers: RTCIceServer[]; expiresAt: number }> {
+  const res = await fetch("/api/ice", {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`ice failed: ${res.status}`);
+  return res.json();
+}
+
 export async function sendSignal(
   token: string,
   toId: string,

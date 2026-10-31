@@ -15,6 +15,7 @@ export const LIMITS = {
   poll: { max: 240, windowMs: 60_000 },
   signal: { max: 600, windowMs: 60_000 },
   leave: { max: 30, windowMs: 60_000 },
+  ice: { max: 30, windowMs: 60_000 },
 } as const;
 
 export function rateLimit(
