@@ -1,5 +1,27 @@
 # Notes
 
+Live: https://hallo-olive.vercel.app/ · Repo cloned (not forked) from `PetCoverage/Pulse-Technical-Assessment`.
+
+## Phase 1 — Make it run
+
+How I found the bugs: I ran two browser profiles with different mock geolocations, then walked the full flow (join → see each other → request → accept → chat → video → leave), watching the Network tab, the database rows and the WebRTC connection state at each step.
+
+| Area | What was broken | Fix |
+|---|---|---|
+| Presence | Every poll refreshed *everyone's* heartbeat, so closed tabs never went stale (the "dots stay forever" bug). | The heartbeat refreshes only the caller; reaped sessions are told to re-join. |
+| Signaling | Ending a connection only freed one side, so the other user stayed "busy" for good. | `end` frees the busy flag for both peers. |
+| Entry | Join failures were silent; the app broke without geolocation, a secure context or `crypto.randomUUID`. | Errors are shown, with a geolocation fallback, a secure-context check and an id fallback. |
+| WebRTC | Wrong chat message type; ICE candidates applied before the remote description; signals processed out of order; hang-up and a stale peer never detected. | Typed messages, queued ICE candidates, a serialized signal queue, data-channel close handling, and an offline-peer check. |
+| Map | A fake fallback Mapbox token; markers recreated on every poll (flicker, lost clicks). | Removed the fallback; existing markers move instead of being recreated. |
+
+## Phase 2 — Make it good
+
+- **Concept:** "wandering souls in the mist", a fantasy theme that fits anonymous, ephemeral strangers better than a generic chat UI.
+- **Globe:** an earth-toned vector globe with atmosphere. Users are glowing wisps veiled in mist (which also hints that positions are approximate), and a rune sigil marks your own position.
+- **Wanderers ledger:** a list of nearby souls with a coarse, city-level "whereabouts" and fly-to, so you can find people without hunting around the globe.
+- **Entry gate, chat panel, prompts:** one consistent visual language, with motion that respects `prefers-reduced-motion`.
+- **Video call:** the stranger's whole face is always in frame (`object-contain`, never cropped), your own camera is mirrored in the top-right corner (tap to swap), there's in-call chat with an unread badge (side-by-side on desktop, a bottom sheet on mobile), a cancellable video request with a timeout, and a tap-to-play fallback when the browser blocks autoplay.
+
 ## Phase 3 — Make it secure
 
 ### Findings, ranked
@@ -60,6 +82,25 @@ Verified with a scripted attack/flow test against the running API (forged accept
 - **The rate limiter is per serverless instance.** It slows scripted floods but isn't a global quota. Production should back it with Upstash Redis / Vercel KV, and add a Vercel WAF rule.
 - **No proof-of-humanity on join.** A distributed botnet can still fill the map. Options: Turnstile on the entry gate, or proof-of-work in `join`.
 - **CSP has no `script-src`.** A strict policy needs per-request nonces via `proxy.ts` (Next's inline scripts) plus Mapbox allowances (`blob:` workers, `*.mapbox.com`).
-- **IP exposure to peers is inherent to STUN-only WebRTC.** Once you accept, the stranger learns your public IP. A TURN relay with `iceTransportPolicy: "relay"` would hide it; the UI should at least warn about this.
+- **Peers can still see your IP.** A direct connection reveals your public IP to the stranger once you accept. The TURN relay (Phase 4) makes a relay-only privacy mode possible (`iceTransportPolicy: "relay"`), but it's not switched on yet.
 - **Busy/accept updates aren't one transaction.** Interactive transactions over a PgBouncer pooler are unreliable. Conditional `updateMany` with rollback covers the races that matter.
-- **Reporting/blocking is out of scope here** (it belongs in Phase 4 "safe" territory).
+- **Reporting/blocking is not implemented yet.**
+
+## Phase 4 — Make it better
+
+**What:** "Reach anyone, anywhere": connections that work through VPNs, corporate firewalls and symmetric NATs, and survive network changes mid-call.
+
+**Why:** the README accepts STUN-only as a known limitation, but a globe of strangers only feels alive if tapping a dot actually connects. On VPNs, corporate firewalls and some mobile networks it often didn't.
+
+- **A TURN relay through a provider-agnostic `/api/ice`** (`lib/ice.ts`). It supports Metered, Cloudflare or any static TURN server via env vars. Provider secrets stay on the server; browsers get short-lived credentials only.
+- **Includes TURN over TLS on port 443**, which gets through networks that only allow HTTPS.
+- **Abuse-safe:** only sessions that are on the map get relay credentials (bearer token plus a presence check, rate-limited), so the TURN quota can't be farmed anonymously.
+- **Self-healing calls:** a short grace period on `disconnected`, then up to 3 ICE restarts that can fall back to the relay. Chat survives Wi-Fi ↔ mobile switches and VPN reconnects without hanging up.
+- **Graceful fallback:** if the provider is down, the app uses STUN only and retries after 60 s instead of blocking the connection.
+- **Ops tooling:** `node scripts/check-turn.mjs <url>` confirms a deployment hands out TURN (and port 443 TLS), and tells "not configured" apart from "provider error".
+
+**Next, with more time:**
+- an opt-in **"hide my IP" mode** (relay-only), turned on by default after a report;
+- **report/block**, with a short server-side cooldown between the two ids;
+- **mute and camera-off controls** during video calls;
+- a global rate limiter on Redis, and Turnstile on join.
