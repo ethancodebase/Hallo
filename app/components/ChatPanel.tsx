@@ -22,7 +22,7 @@ export default function ChatPanel({
   messages: ChatMessage[];
   connected: boolean;
   videoBusy: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string) => boolean;
   onStartVideo: () => void;
   onEnd: () => void;
 }) {
@@ -39,8 +39,7 @@ export default function ChatPanel({
     e.preventDefault();
     const text = draft.trim();
     if (!text || !connected) return;
-    onSend(text);
-    setDraft("");
+    if (onSend(text)) setDraft("");
   }
 
   return (
@@ -84,17 +83,28 @@ export default function ChatPanel({
       </header>
 
       <div className="ledger-scroll flex-1 space-y-2.5 overflow-y-auto p-4">
-        {messages.length === 0 && (
-          <div className="mt-10 text-center">
-            <p className="font-fantasy text-sm tracking-wide text-amber-100/90">
-              ✦ A thread of light connects you ✦
-            </p>
-            <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-violet-300/80">
-              Whisper a greeting. Your words travel spirit to spirit — never
-              kept, never stored.
-            </p>
-          </div>
-        )}
+        {messages.length === 0 &&
+          (connected ? (
+            <div className="mt-10 text-center">
+              <p className="font-fantasy text-sm tracking-wide text-amber-100/90">
+                ✦ A thread of light connects you ✦
+              </p>
+              <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-violet-300/80">
+                Whisper a greeting. Your words travel spirit to spirit — never
+                kept, never stored.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-10 text-center">
+              <p className="animate-pulse font-fantasy text-sm tracking-wide text-violet-200/90">
+                ✦ Weaving the thread of light… ✦
+              </p>
+              <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-violet-300/80">
+                Reaching the stranger directly. Messages can be sent once the
+                thread is bound.
+              </p>
+            </div>
+          ))}
         {messages.map((m) => (
           <div
             key={m.id}
