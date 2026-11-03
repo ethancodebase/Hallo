@@ -4,7 +4,7 @@
 
 The app features an interactive world map where each online user appears as a location marker. Users can select another person on the map, establish a connection, exchange messages, and start a video conversation without creating an account.
 
-Pulse is designed around privacy and simplicity. It does not require user registration or maintain chat history. Presence coordination and WebRTC signaling are handled by the backend, while actual messaging and video communication happen directly between users through peer-to-peer connections.
+Hallo is designed around privacy and simplicity. It does not require user registration or maintain chat history. Presence coordination and WebRTC signaling are handled by the backend, while actual messaging and video communication happen directly between users through peer-to-peer connections.
 
 **Live Demo:** [https://hallo-olive.vercel.app/](https://hallo-olive.vercel.app/)
 
@@ -37,7 +37,7 @@ Pulse is designed around privacy and simplicity. It does not require user regist
 
 ## Architecture
 
-Pulse separates connection coordination from actual communication.
+Hallo separates connection coordination from actual communication.
 
 ### 1. Presence and Signaling
 
@@ -79,7 +79,7 @@ Mapbox GL JS provides the geographical interface.
 
    ```bash
    git clone <repository-url>
-   cd pulse
+   cd hallo
    ```
 
 2. Install dependencies:
@@ -115,7 +115,7 @@ Mapbox GL JS provides the geographical interface.
 
 ## Testing the Application
 
-Pulse requires two participants to test its communication features.
+Hallo requires two participants to test its communication features.
 
 1. Open the application in two separate browser windows or profiles.
 2. Allow location access in both browsers.
@@ -129,7 +129,7 @@ Pulse requires two participants to test its communication features.
 
 ## Privacy and Data Handling
 
-Pulse is designed to minimize the information stored by the application.
+Hallo is designed to minimize the information stored by the application.
 
 - No user registration or permanent accounts.
 - No persistent chat history.

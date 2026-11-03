@@ -188,7 +188,7 @@ export default function WanderersLedger({
 
           {peers.length === 0 && (
             <li className="px-3 py-3 text-xs italic leading-relaxed text-violet-300/80">
-              No other lights wander yet. Open Pulse in a second window to
+              No other lights wander yet. Open Hallo in a second window to
               summon one.
             </li>
           )}

@@ -1,4 +1,4 @@
-// Checks whether a deployed Pulse instance hands out TURN relay servers.
+// Checks whether a deployed Hallo instance hands out TURN relay servers.
 //   node scripts/check-turn.mjs https://hallo-olive.vercel.app
 // Joins as a throwaway session, reads /api/ice, then leaves again.
 import { randomBytes } from "node:crypto";

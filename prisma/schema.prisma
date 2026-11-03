@@ -1,4 +1,4 @@
-// Pulse — coordination store only. Nothing here is durable user data:
+// Hallo — coordination store only. Nothing here is durable user data:
 // rows are deleted on leave, on staleness, or after a signal is delivered.
 // Chat text and video are NOT modeled — they ride WebRTC peer-to-peer and
 // never reach the server.

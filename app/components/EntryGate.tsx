@@ -20,7 +20,7 @@ export default function EntryGate({
     try {
       await onReady(pos.coords.latitude, pos.coords.longitude);
     } catch {
-      fail("Couldn't reach Pulse. Check your connection and try again.");
+      fail("Couldn't reach Hallo. Check your connection and try again.");
     }
   }
 
@@ -47,7 +47,7 @@ export default function EntryGate({
   function enter() {
     if (!window.isSecureContext) {
       fail(
-        "Pulse needs a secure connection for location and camera. Open it via https:// or http://localhost.",
+        "Hallo needs a secure connection for location and camera. Open it via https:// or http://localhost.",
       );
       return;
     }

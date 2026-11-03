@@ -1,4 +1,4 @@
-# Pulse — Business Requirements
+# Hallo — Business Requirements
 
 > A living globe of anonymous strangers. Every online user is a dot. Tap one, start talking.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Pulse is a real-time anonymous connection app. Users appear on a world map as dots near their location and can connect with strangers for text chat or video calls. There are no accounts, no history, and no traces. When a session ends, everything disappears.
+Hallo is a real-time anonymous connection app. Users appear on a world map as dots near their location and can connect with strangers for text chat or video calls. There are no accounts, no history, and no traces. When a session ends, everything disappears.
 
 ---
 
@@ -79,5 +79,5 @@ Pulse is a real-time anonymous connection app. Users appear on a world map as do
 
 ## Deployment
 
-- The app must be deployable to Vercel with no external services or third-party platforms required
-- The entire app runs as a single Next.js project
+- The app runs as a single Next.js project and is deployable to Vercel
+- PostgreSQL is used for transient presence and signaling data only

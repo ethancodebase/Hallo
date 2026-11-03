@@ -18,7 +18,7 @@ const cinzel = Cinzel({
 });
 
 export const metadata: Metadata = {
-  title: "Pulse",
+  title: "Hallo",
   description: "A living globe of anonymous strangers. Tap a dot, start talking.",
 };
 
