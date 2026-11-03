@@ -1,171 +1,153 @@
-# Pulse — Take-Home Assessment
+# Hallo
 
-Welcome, and thanks for taking the time. **Pulse** is a working (mostly!) Next.js
-app: a living globe of anonymous strangers — every online user is a dot on a world
-map; tap one to connect for text chat or a video call. No accounts, no history,
-nothing stored. Coordination and WebRTC signaling run through the server
-(Postgres + HTTP polling); chat and video are peer-to-peer over WebRTC.
+**Hallo** is a real-time communication app that lets people discover and connect with strangers around the world through text chat and video calls.
 
-You'll work through **four phases**. They're designed to be realistic, not trick
-questions. We care as much about *how you think* as about what you ship — so a
-short write-up is required (see **Deliverables**).
+The app features an interactive world map where each online user appears as a location marker. Users can select another person on the map, establish a connection, exchange messages, and start a video conversation without creating an account.
 
-> **Using AI is allowed.** Use whatever tools you'd use on the job. The phases are
-> built so that judgment, debugging, and product taste matter more than raw code
-> generation. Please make the decisions yours and be ready to explain them.
+Pulse is designed around privacy and simplicity. It does not require user registration or maintain chat history. Presence coordination and WebRTC signaling are handled by the backend, while actual messaging and video communication happen directly between users through peer-to-peer connections.
+
+**Live Demo:** [https://hallo-olive.vercel.app/](https://hallo-olive.vercel.app/)
 
 ---
 
-## See it live
+## Features
 
-A working version is deployed at **https://hallo-olive.vercel.app/**.
+- **Interactive World Map:** Discover online users through a live map powered by Mapbox GL JS.
+- **Real-Time Presence:** See other active users and their approximate locations.
+- **Anonymous Connections:** Connect with strangers without creating an account.
+- **Text Messaging:** Exchange messages through a peer-to-peer WebRTC data channel.
+- **Video Calling:** Start direct video conversations using WebRTC.
+- **Privacy-Focused Communication:** Messages and video streams are transmitted directly between participants and are not stored by the application.
+- **Randomized Map Positions:** User markers are placed approximately 1–3 km from their actual location to avoid exposing precise coordinates.
+- **Lightweight Backend:** Uses HTTP polling for presence updates and signaling without requiring persistent WebSocket connections.
 
-Because Pulse connects two strangers, you need **two participants** to try it: open
-the link in **two separate browser windows** (e.g. a normal window + an
-incognito/private window, or two different browsers). In each window's DevTools →
-**Sensors**, set a different mock geolocation so the two dots land apart, then tap
-one dot to connect, accept, chat, and start video.
+## Tech Stack
 
----
+| Category | Technology |
+|---|---|
+| Frontend | Next.js, React, TypeScript |
+| Styling | CSS |
+| Interactive Map | Mapbox GL JS |
+| Backend | Next.js API Routes |
+| Database | PostgreSQL |
+| ORM | Prisma |
+| Communication | WebRTC |
+| Signaling | HTTP Polling |
+| Deployment | Vercel |
 
-## How it works
+## Architecture
 
-- **Coordination only** runs on the server: live presence and the WebRTC signaling
-  handshake, stored transiently in **Postgres** (via Prisma) and delivered by short
-  **HTTP polling** (no WebSockets — they don't work on Vercel serverless).
-- **Chat and video are peer-to-peer** over **WebRTC** (data channel + media). They
-  never touch the server, so messages and video are never seen or stored.
-- The map is **Mapbox GL JS**. Each dot is placed 1–3 km from the user's real
-  location, randomized fresh every session.
+Pulse separates connection coordination from actual communication.
 
----
+### 1. Presence and Signaling
 
-## Getting started
+The backend manages user presence, connection requests, and WebRTC signaling information.
 
-> ### ⚠️ Repository setup — please read this first
-> **Clone this repository — do _NOT_ fork it.** Then create a brand-new **public**
-> GitHub repository of your own and push your clone there. **Commit as you go** —
-> we review your **git history and commit practice**, so use meaningful,
-> incremental commits with clear messages (not one giant final commit). Your final
-> deliverables are **your public repo URL** and a **live Vercel URL** — see
-> **Deliverables** below.
+- PostgreSQL stores transient presence and signaling data.
+- Prisma handles database operations.
+- HTTP polling retrieves updates from the server.
+- No persistent WebSocket connection is required.
 
-### Local setup
+### 2. Peer-to-Peer Communication
 
-1. Install deps:
+Once two users establish a connection, communication happens directly between their browsers using WebRTC.
+
+- Text messages travel through a WebRTC data channel.
+- Audio and video use WebRTC media streams.
+- The backend is not involved in transferring messages or media.
+
+### 3. Interactive Map
+
+Mapbox GL JS provides the geographical interface.
+
+- Displays currently active users as map markers.
+- Updates user presence through backend polling.
+- Uses randomized marker positions to provide an additional layer of location privacy.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js
+- npm
+- PostgreSQL database
+- Mapbox access token
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone <repository-url>
+   cd pulse
+   ```
+
+2. Install dependencies:
+
    ```bash
    npm install
    ```
-2. Copy `.env.example` to `.env` and fill in your own credentials:
-   - A free Postgres database — [Neon](https://neon.tech) or Vercel Postgres.
-   - A free [Mapbox token](https://account.mapbox.com/access-tokens/).
-3. Create the tables:
+
+3. Configure environment variables.
+
+   Copy `.env.example` to `.env` and provide the required credentials:
+
+   - PostgreSQL database connection string.
+   - Mapbox access token.
+
+4. Initialize the database:
+
    ```bash
    npx prisma db push
    ```
-4. Run it:
+
+5. Start the development server:
+
    ```bash
    npm run dev
    ```
-   Open http://localhost:3000.
 
-### Testing with two users
+6. Open the application:
 
-WebRTC needs two participants. Open the app in two browser profiles (e.g. a normal
-window + an incognito window). In each tab's DevTools → **Sensors**, set a
-different mock geolocation so the dots land apart, then connect.
+   ```text
+   http://localhost:3000
+   ```
 
-> Connections use **STUN only** (no TURN), so a minority of strict/corporate
-> networks won't establish a media connection — that's a known limitation, not
-> something you need to solve.
+## Testing the Application
 
-> There is a note in `AGENTS.md` about this codebase. Please read it.
+Pulse requires two participants to test its communication features.
 
----
+1. Open the application in two separate browser windows or profiles.
+2. Allow location access in both browsers.
+3. If testing locally, use browser DevTools → Sensors to simulate different geographical locations.
+4. Wait for both users to appear on the map.
+5. Select another user and establish a connection.
+6. Accept the connection request.
+7. Test text messaging and video calling.
 
-## The phases
+**Network Compatibility:** WebRTC connections currently use STUN servers without TURN relay support. Some restrictive corporate networks and NAT configurations may prevent direct media connections.
 
-(See the email for time expectations.)
+## Privacy and Data Handling
 
-### Phase 1 — Make it run
-The app does not currently work end-to-end. There are several bugs in here — find
-and fix each one until two users can reliably see each other on the map, connect,
-chat, and start a video call.
+Pulse is designed to minimize the information stored by the application.
 
-As **one example** of the kind of thing you'll run into:
+- No user registration or permanent accounts.
+- No persistent chat history.
+- No server-side storage of message content or video streams.
+- Presence and signaling information are stored transiently for connection coordination.
+- Approximate randomized map positions help protect users' precise locations.
 
-> "I tested with a friend. After we both closed the app, our dots stayed on the
-> map for ages — it kept looking like people were online when nobody was."
+## Future Improvements
 
-That's one bug. **There are more** — this is just an example to show the flavor.
-Track down and fix each issue you find.
+Potential areas for further development include:
 
-### Phase 2 — Make it good
-This phase is all about **UI/UX**. Make Pulse genuinely *beautiful* — something
-you'd be proud to show off and that people would actually want to use. There's no
-mockup and no rules: restyle anything, add motion and polish, rethink the layout,
-tighten the flow, sweat the details. **Use your creativity and make this app
-gorgeous.** We're looking at your sense of design, taste, and product feel — go
-make it stunning.
-
-### Phase 3 — Make it secure
-Review the API before shipping. Identify the issues you'd want fixed before this
-went live, prioritize them, and address what you can.
-
-### Phase 4 — Make it better
-Build something **new** that makes Pulse feel more **alive** and/or **safe** — and
-that genuinely impresses us. Add a unique feature or capability of your own design:
-something creative and original that makes the app stand out and that you'd want a
-reviewer to remember. There's no spec and no right answer — the idea is entirely
-yours. Surprise us, ship it working, and explain your thinking in your notes.
+- TURN server support for improved WebRTC connectivity.
+- Improved presence detection and connection cleanup.
+- More advanced user discovery and matching.
+- Connection safety features and user reporting.
+- Improved mobile responsiveness and video call controls.
+- Additional performance and security improvements.
 
 ---
 
-## A note on sequencing
-
-Phases **2 and 4** can be attempted at any time. Phase **3** (security review)
-assumes a running app, so it's most natural after Phase 1.
-
----
-
-## Deliverables
-
-1. **A public GitHub repository.** **Clone** this project (do **not** fork it) and
-   push it to a brand-new public repo of your own. Commit as you go — we review
-   your **git history and commit practice**, so meaningful, incremental commits
-   with clear messages matter.
-2. **A live Vercel deployment.** Deploy your finished app and include the URL so we
-   can test it end-to-end. Set the same env vars from `.env.example` in the Vercel
-   project settings, and run the Prisma schema against your database.
-3. **A `NOTES.md`** at the repo root with a short section per phase:
-   - **Phase 1:** what was broken, how you found it, how you fixed it.
-   - **Phase 2:** what you changed and the thinking behind it.
-   - **Phase 3:** the issues you found, how you'd rank them, and what you fixed.
-   - **Phase 4:** what you built, why, and what you'd do next with more time.
-
-Submit the **repo URL** and the **Vercel URL**. Keep `NOTES.md` concise — bullet
-points are fine. We read it closely.
-
----
-
-## Ground rules
-
-- Use any libraries, tools, or AI assistance you like.
-- Don't worry about pixel-perfect polish or 100% completeness — we're looking at
-  judgment, problem-solving, and how you make trade-offs.
-- If something is ambiguous, make a reasonable call and note your assumption.
-- Do optimization you want, its your decision to make.
-
-Good luck — have fun with it.
-
----
-
-## How it's scored
-
-| Phase | Weight |
-|-------|--------|
-| Phase 1 — Make it run | 15% |
-| Phase 2 — Make it good | 30% |
-| Phase 3 — Make it secure | 20% |
-| Phase 4 — Make it better | 30% |
-| Engineering practice & delivery | 5% |
+**Hallo** is an ongoing communication application focused on making spontaneous, anonymous conversations simple and accessible.
