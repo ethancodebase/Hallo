@@ -77,7 +77,7 @@ export default function EntryGate({
 
         <div className="text-center">
           <h1 className="gate-title font-fantasy text-5xl font-bold tracking-[0.2em] sm:text-6xl">
-            PULSE
+            Hallo
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-violet-200/85 sm:text-base">
             A living globe of wandering souls. Step through the veil, find a
